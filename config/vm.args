@@ -1,0 +1,6 @@
+-sname erl_ebpf
+
+-setcookie erl_ebpf_cookie
+
++K true
++A30
