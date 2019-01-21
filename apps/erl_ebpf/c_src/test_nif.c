@@ -2,16 +2,53 @@
 
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 
 #include <sys/ebpf.h>
 #include <sys/ebpf_vm.h>
 
+static void ebpf_vm_dtor(ErlNifEnv* env, void* obj);
 static void register_functions(struct ebpf_vm *vm);
 ERL_NIF_TERM mk_atom(ErlNifEnv* env, const char* atom);
 ERL_NIF_TERM mk_error(ErlNifEnv* env, const char* mesg);
 ERL_NIF_TERM mk_ret_tuple(ErlNifEnv* env, const uint64_t retval);
 void * memfrob(void *s, size_t n);
 
+static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_error;
+
+static ErlNifResourceType* EBPF_VM_RESOURCE = NULL;
+
+/* NIF load function
+ *
+ * we create resource type ebpf_vm_type
+ * and assing destructor function
+ */
+static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
+{
+  atom_ok = enif_make_atom(env, "ok");
+  atom_error = enif_make_atom(env, "error");
+    
+  ErlNifResourceType* rt = enif_open_resource_type(env, NULL,
+						   "ebpf_vm_type",
+						   ebpf_vm_dtor,
+						   ERL_NIF_RT_CREATE, NULL);
+  if(rt == NULL)
+    return -1;
+
+  assert(EBPF_VM_RESOURCE == NULL);
+  EBPF_VM_RESOURCE = rt;
+  return 0;
+}
+
+/* Destructor function for resource ebpf_vm_type */
+static void ebpf_vm_dtor(ErlNifEnv* env, void* obj)
+{
+  struct ebpf_vm** vm = obj;
+
+  if(*vm)
+    ebpf_destroy(*vm);
+}
 
 ERL_NIF_TERM
 mk_atom(ErlNifEnv* env, const char* atom)
@@ -29,76 +66,90 @@ mk_atom(ErlNifEnv* env, const char* atom)
 ERL_NIF_TERM
 mk_error(ErlNifEnv* env, const char* mesg)
 {
-    return enif_make_tuple2(env, mk_atom(env, "error"), mk_atom(env, mesg));
+    return enif_make_tuple2(env, atom_error, mk_atom(env, mesg));
 }
 
 ERL_NIF_TERM
 mk_ret_tuple(ErlNifEnv* env, const uint64_t retval)
 {
-    return enif_make_tuple2(env, mk_atom(env, "ok"), enif_make_int64(env, retval));
+    return enif_make_tuple2(env, atom_ok, enif_make_int64(env, retval));
 }
 
+/*
+ * Create ebpf_vm and load code
+ */
 static ERL_NIF_TERM
-ebpf_run(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    ErlNifEnv* msg_env;
-    ErlNifBinary ebpf_code;
+  ErlNifBinary ebpf_code;
+  ERL_NIF_TERM res = {0};
+  
+  if(argc != 1)
+    return enif_make_badarg(env);
+  
+  if(!enif_is_binary(env, argv[0]))
+     return mk_error(env, "arg0_not_a_binary");
+
+  if(!enif_inspect_binary(env, argv[0], &ebpf_code))
+    return enif_make_badarg(env);
+
+  /* create ebpf VM */
+  struct ebpf_vm **vm = enif_alloc_resource(EBPF_VM_RESOURCE, sizeof(struct ebpf_vm*));
+  *vm = ebpf_create();
+  if(!*vm){
+    enif_release_resource(vm);
+    return mk_error(env, "ebpf_create_vm_error");
+  }
+
+  register_functions(*vm);
+
+  int rv  = ebpf_load(*vm, ebpf_code.data, ebpf_code.size);
+  if(rv < 0){
+    ebpf_destroy(*vm);
+    return mk_error(env, "ebpf_load_code_error");
+  }
+
+  /* Should return VM object to erlang here */
+  res = enif_make_resource(env, vm);
+  enif_release_resource(vm);
+  return enif_make_tuple(env, 2, atom_ok, res);
+}
+
+/*
+ * Run given ebpf VM with given "memory"
+ */
+static ERL_NIF_TERM
+run(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
     ErlNifBinary ebpf_memory;
+    struct ebpf_vm **vm;
 
     if(argc != 2)
     {
         return enif_make_badarg(env);
     }
 
-    if(!enif_is_binary(env, argv[0]))
-    {
-        return mk_error(env, "arg0_not_a_binary");
+    if(!enif_get_resource(env, argv[0], EBPF_VM_RESOURCE, (void **)&vm)) {
+      return mk_error(env, "ebpf_get_resource_error");
     }
-    if(!enif_inspect_binary(env, argv[0], &ebpf_code))
-        return enif_make_badarg(env);
 
     if(!enif_is_binary(env, argv[1]))
-    {
         return mk_error(env, "arg1_not_a_binary");
-    }
-    if(!enif_inspect_binary(env, argv[0], &ebpf_memory))
+    if(!enif_inspect_binary(env, argv[1], &ebpf_memory))
         return enif_make_badarg(env);
 
-    msg_env = enif_alloc_env();
-    if(msg_env == NULL)
-    {
-        return mk_error(env, "environ_alloc_error");
-    }
-
-    /* create ebpf VM */
-    struct ebpf_vm *vm = ebpf_create();
-    if(!vm) {
-        return mk_error(env, "ebpf_create_vm_error");
-    }
-
-    register_functions(vm);
-
-    int rv = ebpf_load(vm, ebpf_code.data, ebpf_code.size);
-    if(rv < 0) {
-        ebpf_destroy(vm);
-        return mk_error(env, "ebpf_load_vm_error");
-    }
-
     uint64_t ret;
-    ret = ebpf_exec(vm, ebpf_memory.data, ebpf_memory.size);
+    ret = ebpf_exec(*vm, ebpf_memory.data, ebpf_memory.size);
 
-    /* destroy ebpf */
-    ebpf_destroy(vm);
-
-    enif_free_env(msg_env);
     return mk_ret_tuple(env, ret);
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"ebpf_run", 2, ebpf_run}
+				 {"create", 1, create},
+				 {"run", 2, run}
 };
 
-ERL_NIF_INIT(test_nif, nif_funcs, NULL, NULL, NULL, NULL);
+ERL_NIF_INIT(test_nif, nif_funcs, load, NULL, NULL, NULL);
 
 
 /* MaxOSX and FreeBSD doesn't have memfrob */
