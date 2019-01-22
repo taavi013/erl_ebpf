@@ -14,6 +14,8 @@ ERL_NIF_TERM mk_error(ErlNifEnv* env, const char* mesg);
 ERL_NIF_TERM mk_ret_tuple(ErlNifEnv* env, const uint64_t retval);
 void * memfrob(void *s, size_t n);
 
+extern int load_elf(struct ebpf_vm *vm, const void *elf, size_t elf_size, char **errmsg);
+
 static ERL_NIF_TERM atom_ok;
 static ERL_NIF_TERM atom_error;
 
@@ -83,16 +85,14 @@ create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   ErlNifBinary ebpf_code;
   ERL_NIF_TERM res = {0};
+  int arity;
+  const ERL_NIF_TERM *arg_tuple;
+  char binary_type[32];
+  ErlNifBinary elf_binary;
   
   if(argc != 1)
     return enif_make_badarg(env);
   
-  if(!enif_is_binary(env, argv[0]))
-     return mk_error(env, "arg0_not_a_binary");
-
-  if(!enif_inspect_binary(env, argv[0], &ebpf_code))
-    return enif_make_badarg(env);
-
   /* create ebpf VM */
   struct ebpf_vm **vm = enif_alloc_resource(EBPF_VM_RESOURCE, sizeof(struct ebpf_vm*));
   *vm = ebpf_create();
@@ -103,11 +103,47 @@ create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
   register_functions(*vm);
 
-  int rv  = ebpf_load(*vm, ebpf_code.data, ebpf_code.size);
-  if(rv < 0){
-    ebpf_destroy(*vm);
-    return mk_error(env, "ebpf_load_code_error");
+ 
+  if(enif_is_binary(env, argv[0])) {
+    /* argv[0] is simple binary i.e. contains runnable eBPF code */
+    if(!enif_inspect_binary(env, argv[0], &ebpf_code))
+      return enif_make_badarg(env);
+
+    int rv  = ebpf_load(*vm, ebpf_code.data, ebpf_code.size);
+    if(rv < 0){
+      ebpf_destroy(*vm);
+      return mk_error(env, "ebpf_load_code_error");
+    }
+    
+  } else if(enif_is_tuple(env, argv[0])) {
+    /* argv[0] is tuple, should be in form {type, binary}, where type is "elf" */
+    if(!enif_get_tuple(env, argv[0], &arity, &arg_tuple))
+      return mk_error(env, "arg0_not_{type,binary}_tuple");
+    if(arity!=2)
+      return mk_error(env, "arg0_arity_not_2");
+    if(!enif_get_atom(env, arg_tuple[0], binary_type, sizeof(binary_type), ERL_NIF_LATIN1))
+      return mk_error(env, "arg0_tuple_first_elem_is_not_atom");
+    if(!enif_is_binary(env, arg_tuple[1]))
+      return mk_error(env, "arg0_tuple_second_elem_is_not_binary");
+    if(!enif_inspect_binary(env, arg_tuple[1], &elf_binary))
+      return enif_make_badarg(env);
+
+    if(strcmp(binary_type, "elf"))
+      return mk_error(env, "unknown_binary_type");
+
+    char *errmsg;
+    
+    int rv  = load_elf(*vm, elf_binary.data, elf_binary.size, &errmsg);
+    if(rv < 0){
+      ebpf_destroy(*vm);
+      return mk_error(env, "ebpf_load_elf_code_error");
+    }
+    
+  } else {
+    /* argv[0] structure is wrong */
+    return mk_error(env, "arg0_not_a_binary_or_tuple");
   }
+
 
   /* Should return VM object to erlang here */
   res = enif_make_resource(env, vm);

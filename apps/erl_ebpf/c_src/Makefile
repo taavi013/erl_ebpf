@@ -33,7 +33,7 @@ endif
 
 EBPF_DIR = /Users/taavi/devel/generic-ebpf
 
-CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(EBPF_DIR)/sys
+CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(EBPF_DIR)/sys -I $(EBPF_DIR)/Darwin/ebpf/user -I $(EBPF_DIR)/extern/ck-0.6.0/include
 CXXFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I ${EBPF_DIR)/sys
 
 LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lerl_interface -lei -L $(EBPF_DIR) -lebpf

@@ -1,5 +1,5 @@
 -module(erl_ebpf).
--export([create/1, run/2]).
+-export([create_from_elf/1, create/1, run/2]).
 -on_load(init/0).
 
 -ifdef(TEST).
@@ -8,6 +8,10 @@
 
 -define(APPNAME, erl_ebpf).
 -define(LIBNAME, erl_ebpf).
+
+create_from_elf(Filename) ->
+    {ok, Binary} = file:read_file(Filename),
+    create({elf, Binary}).
 
 create(_) ->
     not_loaded(?LINE).
@@ -33,6 +37,15 @@ not_loaded(Line) ->
     erlang:nif_error({not_loaded, [{module, ?MODULE}, {line, Line}]}).
 
 -ifdef(EUNIT).
+test_file(Filename) ->
+    FullFilename = case code:priv_dir(?APPNAME) of
+		       {error, bad_name} ->
+			   throw(bad_name);
+		       Dir ->
+			   filename:join([Dir, "../test/", Filename])
+		   end,
+    FullFilename.
+
 ebpf_test_() ->
     [
      {"Return constant from EBPF program", ?_assert( 
@@ -54,7 +67,15 @@ ebpf_test_() ->
 						  {ok, R} = erl_ebpf:create(<<16#71,16#10,0,0,0,0,0,0,16#95,0,0,0,0,0,0,0>>), 
 						  erl_ebpf:run(R, <<"ab">>) =:= {ok, $a} 
 					      end
-					     )}
+					     )},
+     {"Load from ELF", ?_assert(
+			  begin
+			      Filename = test_file("p1.o"),
+			      ?debugVal(Filename),
+			      {ok, R} = erl_ebpf:create_from_elf(Filename),
+			      erl_ebpf:run(R, <<"ab">>) =:= {ok, 5}
+			  end
+			 )}
     ].
 
 -endif.
