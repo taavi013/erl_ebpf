@@ -149,7 +149,7 @@ static ErlNifFunc nif_funcs[] = {
 				 {"run", 2, run}
 };
 
-ERL_NIF_INIT(test_nif, nif_funcs, load, NULL, NULL, NULL);
+ERL_NIF_INIT(erl_ebpf, nif_funcs, load, NULL, NULL, NULL);
 
 
 /* MaxOSX and FreeBSD doesn't have memfrob */

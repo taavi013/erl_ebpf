@@ -1,4 +1,4 @@
--module(test_nif).
+-module(erl_ebpf).
 -export([create/1, run/2]).
 -on_load(init/0).
 
@@ -37,22 +37,22 @@ ebpf_test_() ->
     [
      {"Return constant from EBPF program", ?_assert( 
 					      begin
-						  {ok, R} = test_nif:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
-						  test_nif:run(R, <<"b">>) =:= {ok, 3} 
+						  {ok, R} = erl_ebpf:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
+						  erl_ebpf:run(R, <<"b">>) =:= {ok, 3} 
 					      end
 					     )},
      {"Return constant from 2 EBPF programs", ?_assert( 
 					      begin
-						  {ok, R1} = test_nif:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
-						  {ok, R2} = test_nif:create(<<16#b7,0,0,0,4,0,0,0,16#95,0,0,0,0,0,0,0>>),
-						  test_nif:run(R2, <<"b">>) =:= {ok, 4},
-						  test_nif:run(R1, <<"c">>) =:= {ok, 3}
+						  {ok, R1} = erl_ebpf:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
+						  {ok, R2} = erl_ebpf:create(<<16#b7,0,0,0,4,0,0,0,16#95,0,0,0,0,0,0,0>>),
+						  erl_ebpf:run(R2, <<"b">>) =:= {ok, 4},
+						  erl_ebpf:run(R1, <<"c">>) =:= {ok, 3}
 					      end
 					     )}, 
      {"Return first byte of binary", ?_assert( 
 					      begin
-						  {ok, R} = test_nif:create(<<16#71,16#10,0,0,0,0,0,0,16#95,0,0,0,0,0,0,0>>), 
-						  test_nif:run(R, <<"ab">>) =:= {ok, $a} 
+						  {ok, R} = erl_ebpf:create(<<16#71,16#10,0,0,0,0,0,0,16#95,0,0,0,0,0,0,0>>), 
+						  erl_ebpf:run(R, <<"ab">>) =:= {ok, $a} 
 					      end
 					     )}
     ].
