@@ -54,12 +54,12 @@ ebpf_test_() ->
 						  erl_ebpf:run(R, <<"b">>) =:= {ok, 3} 
 					      end
 					     )},
-     {"Return constant from 2 EBPF programs", ?_assert( 
-					      begin
-						  {ok, R1} = erl_ebpf:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
-						  {ok, R2} = erl_ebpf:create(<<16#b7,0,0,0,4,0,0,0,16#95,0,0,0,0,0,0,0>>),
-						  erl_ebpf:run(R2, <<"b">>) =:= {ok, 4},
-						  erl_ebpf:run(R1, <<"c">>) =:= {ok, 3}
+     {"Return constant from 2 EBPF programs", ?_assertMatch([{ok,4},{ok,3}], 
+							    begin
+								{ok, R1} = erl_ebpf:create(<<16#b7,0,0,0,3,0,0,0,16#95,0,0,0,0,0,0,0>>), 
+								{ok, R2} = erl_ebpf:create(<<16#b7,0,0,0,4,0,0,0,16#95,0,0,0,0,0,0,0>>),
+								[erl_ebpf:run(R2, <<"b">>),
+								 erl_ebpf:run(R1, <<"c">>)]
 					      end
 					     )}, 
      {"Return first byte of binary", ?_assert( 
@@ -68,14 +68,23 @@ ebpf_test_() ->
 						  erl_ebpf:run(R, <<"ab">>) =:= {ok, $a} 
 					      end
 					     )},
-     {"Load from ELF", ?_assert(
-			  begin
-			      Filename = test_file("p1.o"),
-			      ?debugVal(Filename),
-			      {ok, R} = erl_ebpf:create_from_elf(Filename),
-			      erl_ebpf:run(R, <<"ab">>) =:= {ok, 5}
-			  end
+     {"Load from ELF", ?_assertMatch({ok,5}, 
+				     begin
+					 Filename = test_file("p1.o"),
+					 ?debugVal(Filename),
+					 {ok, R} = erl_ebpf:create_from_elf(Filename),
+					 erl_ebpf:run(R, <<"ab">>)
+				     end
+				    )},
+     {"Load from ELF + memfrob", ?_assertMatch({ok, 16#807060504030201}, 
+					       begin
+						   Filename = test_file("p5.o"),
+						   ?debugVal(Filename),
+						   {ok, R} = erl_ebpf:create_from_elf(Filename),
+						   erl_ebpf:run(R, <<"ab">>)
+					       end
 			 )}
+
     ].
 
 -endif.

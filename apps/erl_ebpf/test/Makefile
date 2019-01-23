@@ -3,7 +3,7 @@ CLANG ?= clang
 
 NOSTDINC_FLAGS := -nostdinc -isystem $(shell $(CC) -print-file-name=include)
 
-BPF_OBJECTS = p1.o p2.o p3.o p4.o
+BPF_OBJECTS = p1.o p2.o p3.o p4.o p5.o
 
 all: $(BPF_OBJECTS)
 

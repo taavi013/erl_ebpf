@@ -136,7 +136,7 @@ create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     int rv  = load_elf(*vm, elf_binary.data, elf_binary.size, &errmsg);
     if(rv < 0){
       ebpf_destroy(*vm);
-      return mk_error(env, "ebpf_load_elf_code_error");
+      return mk_error(env, errmsg);
     }
     
   } else {
