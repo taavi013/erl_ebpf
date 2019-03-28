@@ -1,11 +1,21 @@
 #include "erl_nif.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
 
 #include <sys/ebpf.h>
 #include <sys/ebpf_vm.h>
+
+#include "re.h"
+
+#define TRUE    1
+#define FALSE   0
+
+#define MAX_DNS_NAME_LEN 255
 
 static void ebpf_vm_dtor(ErlNifEnv* env, void* obj);
 static void register_functions(struct ebpf_vm *vm);
@@ -20,6 +30,16 @@ static ERL_NIF_TERM atom_ok;
 static ERL_NIF_TERM atom_error;
 
 static ErlNifResourceType* EBPF_VM_RESOURCE = NULL;
+
+const char *whitelist_array[] = {
+				 ".*.greenlab.ee.",
+				 ".*.delfi.ee.",
+};
+const char *blacklist_array[] = {
+				 ".*.facebook.com.",
+				 ".*.google.com.",
+				 ".*.apple.com.",
+};
 
 /* NIF load function
  *
@@ -232,6 +252,63 @@ sqrti(uint32_t x)
         return sqrt(x);
 }
 
+/*
+ * copy DNS query to destination buffer, insert '.' after domain components
+ */
+static void dnsq_to_str(char *q, char *dest)
+{
+  char *p = q;
+  while( *p != 0){
+    int count = *p++;
+    while( count--){
+      *dest++ = *p++;
+    }
+    *dest++ = '.';
+  }
+  *dest = '\0';
+}
+
+static uint64_t
+is_blacklisted_domain(char *name)
+{
+  char dnsname[MAX_DNS_NAME_LEN+1];
+
+  memset(dnsname, 0, sizeof(dnsname));
+  dnsq_to_str(name, dnsname);
+  
+  enif_fprintf(stderr, "is_blacklisted_domain => %s\n", dnsname);
+
+  for(int i = 0; i < sizeof(blacklist_array)/sizeof(blacklist_array[0]); i++){
+      re_t pattern = re_compile(blacklist_array[i]);
+      if( re_matchp(pattern, dnsname) != -1){
+	enif_fprintf(stderr, "regexp match blacklistlist\n");
+	return TRUE;
+      }
+  }
+  return FALSE;
+}
+
+static uint64_t
+is_whitelisted_domain(char *name)
+{
+  char dnsname[MAX_DNS_NAME_LEN+1];
+
+  memset(dnsname, 0, sizeof(dnsname));
+  dnsq_to_str(name, dnsname);
+  
+  enif_fprintf(stderr, "is_whitelisted_domain => %s\n", dnsname);
+  
+  for(int i = 0; i < sizeof(whitelist_array)/sizeof(whitelist_array[0]); i++){
+      re_t pattern = re_compile(whitelist_array[i]);
+      if( re_matchp(pattern, dnsname) != -1){
+	enif_fprintf(stderr, "regexp match whitelist\n");
+	return TRUE;
+      }
+  }
+  return FALSE;
+}
+
+
 /* Register ebpf VM functions */
 static void
 register_functions(struct ebpf_vm *vm)
@@ -241,4 +318,6 @@ register_functions(struct ebpf_vm *vm)
         ebpf_register(vm, 2, "trash_registers", trash_registers);
         ebpf_register(vm, 3, "sqrti", sqrti);
         ebpf_register(vm, 4, "strcmp_ext", strcmp);
+        ebpf_register(vm, 5, "is_blacklisted_domain", is_blacklisted_domain);
+        ebpf_register(vm, 6, "is_whitelisted_domain", is_whitelisted_domain);
 }

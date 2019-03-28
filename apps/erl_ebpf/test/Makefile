@@ -1,9 +1,12 @@
 LLC ?= llc
 CLANG ?= clang
 
-NOSTDINC_FLAGS := -nostdinc -isystem $(shell $(CC) -print-file-name=include)
+PLATFORM_INCLUDE := /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include
+#PLATFORM_INCLUDE := /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include
 
-BPF_OBJECTS = p1.o p2.o p3.o p4.o p5.o
+NOSTDINC_FLAGS := -nostdinc -isystem $(shell $(CC) -print-file-name=include) -isystem $(PLATFORM_INCLUDE)
+
+BPF_OBJECTS = p1.o p2.o p3.o p4.o p5.o p6.o
 
 all: $(BPF_OBJECTS)
 
