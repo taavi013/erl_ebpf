@@ -48,8 +48,7 @@ uint64_t program(void *buff)
     }
 
     if( htons(udp_header->uh_dport) != 53)
-      return udp_header->uh_dport;
-    //return NOT_UDP_53;
+        return NOT_UDP_53;
 
     dns = (void *)udp_header + sizeof(struct udphdr);
 
